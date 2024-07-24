@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 from torchmetrics import Accuracy
 from torch import Tensor
-from typing import Literal, Tuple, Union
+from typing import Optional, Literal, Tuple, Union
 # ============================== End Of Imports ============================== #
 
 
@@ -47,7 +47,7 @@ class BaseModel(nn.Module):
         """Forward pass."""
         raise NotImplementedError
 
-    def fit(self, train_loader: DataLoader, val_loader: DataLoader, 
+    def fit(self, train_loader: DataLoader, val_loader: Optional[DataLoader] = None, 
             num_epochs: int = 30, lr: float = 0.001, wd: float = 0.,
             try_cuda: bool = True, verbose: bool = True, print_stride: int = 1) -> None:
         """
@@ -102,14 +102,17 @@ class BaseModel(nn.Module):
 
             train_epoch_loss = running_loss / len(train_loader.dataset)  # type: ignore
             train_total_score = train_score / len(train_loader.dataset)  # type: ignore
-            val_epoch_loss, val_total_score = self.calc_metrics(val_loader, use_cuda)
+            self.train_costs.append(train_epoch_loss) 
+            self.train_scores.append(train_total_score)
             
-            self.train_costs.append(train_epoch_loss); self.val_costs.append(val_epoch_loss)
-            self.train_scores.append(train_total_score); self.val_scores.append(val_total_score)
+            if val_loader is not None:
+                val_epoch_loss, val_total_score = self.calc_metrics(val_loader, use_cuda)
+                self.val_costs.append(val_epoch_loss)
+                self.val_scores.append(val_total_score)
 
-            # We want to maximize accuracy but minimize MSE.
-            score = val_total_score if self.task_type == "classification" else -val_total_score
-            self.save_best_weights(score)
+                # We want to maximize accuracy but minimize MSE.
+                score = val_total_score if self.task_type == "classification" else -val_total_score
+                self.save_best_weights(score)
 
             if verbose and (epoch % print_stride == 0 or epoch == num_epochs - 1):
                 print(f"\r[epoch: {self.global_epoch:02d}/{start_epoch + num_epochs:02d}] "

@@ -22,12 +22,12 @@ class SpineDataset(Dataset):
         self.train = train
 
         if self.train:
-            self.series_desc_df = pd.read_csv(os.path.join(root_dir, 'train_series_descriptions.csv'))
-            self.coords_df = pd.read_csv(os.path.join(root_dir, 'train_label_coordinates.csv'))
+            self.series_desc_df = pd.read_csv(os.path.join(root_dir, r'data\train_series_descriptions.csv'))
+            self.coords_df = pd.read_csv(os.path.join(root_dir, r'data\train_label_coordinates.csv'))
             self.merged_df = pd.merge(self.coords_df, self.series_desc_df, on=['study_id', 'series_id'])
             self.condition_to_one_hot = create_condition_one_hot_mapping(self.merged_df)
         else:
-            self.desc_df = pd.read_csv(os.path.join(root_dir, 'test_series_descriptions.csv'))
+            self.desc_df = pd.read_csv(os.path.join(root_dir, r'data\test_series_descriptions.csv'))
             self.merged_df = self.desc_df
             self.condition_to_one_hot = None
 
@@ -43,13 +43,13 @@ class SpineDataset(Dataset):
 
         if self.train:
             series_id = row['series_id']
-            img_path = os.path.join(self.root_dir, 'train_images', str(study_id), str(series_id), f"{instance_number}.dcm")
+            img_path = os.path.join(self.root_dir, r'data\train_images', str(study_id), str(series_id), f"{instance_number}.dcm")
 
             condition = row['condition']
             series_description = row['series_description']
             condition_one_hot = torch.tensor(self.condition_to_one_hot[condition], dtype=torch.float32)
         else:
-            series_path = os.path.join(self.root_dir, 'test_images', str(study_id))
+            series_path = os.path.join(self.root_dir, r'data\test_images', str(study_id))
             dicom_files = [f for f in os.listdir(series_path) if f.endswith('.dcm')]
             if not dicom_files:
                 raise FileNotFoundError(f"No DICOM files found in {series_path}")
