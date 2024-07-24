@@ -4,10 +4,10 @@ from torchvision import transforms
 from SpineCNN import *
 from SpineDataset import *
 
+
 image_width = 100
 image_height = 200
 train_batch = 10
-project_path = Path(os.path.dirname(__file__)).parent
 
 
 def main():
@@ -17,7 +17,7 @@ def main():
         transforms.Normalize((0.5,), (0.5,))
     ])
 
-    dataset = SpineDataset(project_path / "data", True, transform)
+    dataset = SpineDataset(True, transform)
     #test_dataset = SpineDataset(project_path / "data", False, transform)
 
     train_dataloader = DataLoader(dataset, batch_size=train_batch, shuffle=True)
