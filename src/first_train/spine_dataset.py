@@ -115,6 +115,7 @@ class SpineDataset(Dataset):
         images = np.array(images).squeeze()
         images = self.pad_or_crop_image(images)
         images = torch.tensor(images)
+        images = images.unsqueeze(0) # Only 1 channel mri is grayscale
         
          # Create a one-hot encoded tensor for conditions
         condition_tensor = torch.zeros(len(self.condition_columns), 3, dtype=torch.float32)
@@ -126,5 +127,5 @@ class SpineDataset(Dataset):
                 condition_tensor[i, :] = -1  # Use -1 or another value to indicate missing data
             else:
                 condition_tensor[i, severity_mapping[condition]] = 1
-
+        
         return images, condition_tensor
