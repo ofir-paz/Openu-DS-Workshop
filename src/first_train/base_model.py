@@ -88,7 +88,7 @@ class BaseModel(nn.Module):
                 running_loss += lloss * x.size(0)
 
                 if self.task_type == "classification":
-                    train_score += (y_hat.argmax(1) == y).sum().item()
+                    train_score += (y_hat.argmax(1, keepdim=True) == y).sum().item()
 
                 elif self.task_type == "regression":
                     reshaped_y = y.reshape_as(y_hat)
