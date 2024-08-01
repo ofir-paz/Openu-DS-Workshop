@@ -8,7 +8,7 @@ import numpy as np
 import torch.nn.functional as F
 from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import Dataset
-from config import (
+from src.config import (
     DATA_PATH,
     TRAIN_PATH,
     TEST_PATH
@@ -94,7 +94,7 @@ class SpineDataset(Dataset):
         row = self.df.iloc[idx]
 
         study_id = row['study_id']
-        study_path = DATA_PATH + "\\train_images\\" + str(study_id)
+        study_path = DATA_PATH / "train_images" / str(study_id)
 
         dicom_files = self.get_all_dicom_files(study_path)
         if not dicom_files:
@@ -111,11 +111,9 @@ class SpineDataset(Dataset):
 
             images.append(image)
 
-        # Convert list of images to a numpy array and then to tensor
-        images = np.array(images).squeeze()
+        images = torch.cat(images)
         images = self.pad_or_crop_image(images)
-        images = torch.tensor(images)
-        images = images.unsqueeze(0) # Only 1 channel mri is grayscale
+        images = images.unsqueeze(0)  # Only 1 channel mri is grayscale
         
          # Create a one-hot encoded tensor for conditions
         condition_tensor = torch.zeros(len(self.condition_columns), 3, dtype=torch.float32)

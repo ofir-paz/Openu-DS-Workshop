@@ -5,10 +5,10 @@ from spine_cnn import SpineCNN
 from spine_dataset import SpineDataset
 from torch.utils.data import Dataset, DataLoader
 
-image_width = 400
-image_height = 400
-train_batch = 10
-depth = 30
+image_width = 200
+image_height = 200
+train_batch = 2
+depth = 20
 
 def main():
     transform = transforms.Compose([
@@ -24,7 +24,7 @@ def main():
     #test_dataloader = DataLoader(test_dataset, batch_size=len(test_dataset), num_workers=2)
 
     model = SpineCNN(image_height, image_width, depth)
-    model.fit(train_loader=train_dataloader, num_epochs= 1)
+    model.fit(train_loader=train_dataloader, num_epochs=1)
 
 
 if __name__ == '__main__':
