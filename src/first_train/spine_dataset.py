@@ -1,12 +1,10 @@
 import os
-import random
 
 import pandas as pd
 import pydicom
 import torch
 import numpy as np
 import torch.nn.functional as F
-from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import Dataset
 from src.config import (
     DATA_PATH,
@@ -111,11 +109,10 @@ class SpineDataset(Dataset):
 
             images.append(image)
 
-        images = torch.cat(images)
-        images = self.pad_or_crop_image(images)
-        images = images.unsqueeze(0)  # Only 1 channel mri is grayscale
+        images = torch.cat(images).unsqueeze(0)
+        #images = self.pad_or_crop_image(images)
         
-         # Create a one-hot encoded tensor for conditions
+        # Create a one-hot encoded tensor for conditions
         condition_tensor = torch.zeros(len(self.condition_columns), 3, dtype=torch.float32)
         severity_mapping = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
         
@@ -126,4 +123,4 @@ class SpineDataset(Dataset):
             else:
                 condition_tensor[i, severity_mapping[condition]] = 1
         
-        return images, condition_tensor
+        return images, condition_tensor.view(-1)
