@@ -16,7 +16,8 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 from torchmetrics import Accuracy
 from torch import Tensor
-from typing import Optional, Literal, Tuple, Union
+from torch.nn.modules.loss import _Loss as BaseNNLossModule
+from typing import Literal, Tuple, Union, Optional
 # ============================== End Of Imports ============================== #
 
 
@@ -24,31 +25,25 @@ from typing import Optional, Literal, Tuple, Union
 class BaseModel(nn.Module):
     """Base model class."""
 
-    def __init__(self, task_type: Literal["classification", "regression"] = "classification") -> None:
+    def __init__(self) -> None:
         """Constructor."""
         super(BaseModel, self).__init__()
-        self.best_weights: Union[dict[str, Tensor], None] = None
+        self.best_weights: Optional[dict[str, Tensor]] = None
         self.global_epoch: int = 0
         
         self.train_costs: list[float] = []
         self.val_costs: list[float] = []
-        self.train_scores: list[float] = []
-        self.val_scores: list[float] = []
+        self.train_accs: list[float] = []
+        self.val_accs: list[float] = []
 
-        if task_type not in ["classification", "regression"]:
-            raise NotImplementedError("Invalid task type.")
-        self.task_type: Literal["classification", "regression"] = task_type
-        
-        self.criterion: nn.Module = nn.CrossEntropyLoss() \
-            if self.task_type == "classification" else nn.MSELoss()
-        self.score_name: str = "Accuracy" if self.task_type == "classification" else "MSE"        
+        self.criterion: BaseNNLossModule = nn.CrossEntropyLoss()   
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, *args, **kwargs) -> Tensor:
         """Forward pass."""
         raise NotImplementedError
 
     def fit(self, train_loader: DataLoader, val_loader: Optional[DataLoader] = None, 
-            num_epochs: int = 30, lr: float = 0.001, wd: float = 0.,
+            num_epochs: int = 30, lr: float = 0.001, momentum: float = 0.9, wd: float = 0.,
             try_cuda: bool = True, verbose: bool = True, print_stride: int = 1) -> None:
         """
         Base function for training a model.
@@ -58,6 +53,7 @@ class BaseModel(nn.Module):
             val_loader (DataLoader) - The dataloader to validate the model on.
             num_epochs (int) - Number of epochs.
             lr (float) - Learning rate.
+            momentum (float) - Momentum for SGD.
             wd (float) - Weight decay.
             try_cuda (bool) - Try to use CUDA.
             verbose (bool) - Verbose flag.
@@ -76,54 +72,46 @@ class BaseModel(nn.Module):
 
         start_epoch = self.global_epoch
         for epoch in range(num_epochs):
-            running_loss = 0.
-            train_score = 0.
+            running_loss: float = 0.
+            total_corrects: int = 0
             self.global_epoch += 1
             for mb, (x, y) in enumerate(train_loader):
                 if use_cuda:
                     x: Tensor = x.cuda(); y: Tensor = y.cuda()
 
-                y_hat, lloss = self.__train_step(x, y, optimizer, use_cuda)
+                y_hat, loss = self.__train_step(x, y, optimizer)
 
-                running_loss += lloss * x.size(0)
-
-                if self.task_type == "classification":
-                    train_score += (y_hat.argmax(1, keepdim=True) == y).sum().item()
-
-                elif self.task_type == "regression":
-                    reshaped_y = y.reshape_as(y_hat)
-                    train_score += F.mse_loss(y_hat, reshaped_y).item() * x.size(0)
+                running_loss, total_corrects = self._calc_running_matrics(
+                    x, y_hat, y, loss, running_loss, total_corrects)
 
                 # TODO: Use tqdm instead of print.
                 if verbose:
                     print(f"\r[epoch: {self.global_epoch:02d}/{start_epoch + num_epochs:02d} "
                           f"mb: {mb + 1:03d}/{len(train_loader):03d}]  " 
-                          f"[Train loss: {lloss:.6f}]", end="")
+                          f"[Train loss: {loss:.6f}]\033[J", end="")
 
             train_epoch_loss = running_loss / len(train_loader.dataset)  # type: ignore
-            train_total_score = train_score / len(train_loader.dataset)  # type: ignore
-            self.train_costs.append(train_epoch_loss) 
-            self.train_scores.append(train_total_score)
+            train_total_acc = total_corrects / len(train_loader.dataset)  # type: ignore
+            self.train_costs.append(train_epoch_loss); self.train_accs.append(train_total_acc)
             
             if val_loader is not None:
-                val_epoch_loss, val_total_score = self.calc_metrics(val_loader, use_cuda)
-                self.val_costs.append(val_epoch_loss)
-                self.val_scores.append(val_total_score)
+                val_epoch_loss, val_total_acc = self.calc_metrics(val_loader, use_cuda)
+            else:
+                val_epoch_loss, val_total_acc = torch.nan, torch.nan
 
-                # We want to maximize accuracy but minimize MSE.
-                score = val_total_score if self.task_type == "classification" else -val_total_score
-                self.save_best_weights(score)
+            self.val_costs.append(val_epoch_loss); self.val_accs.append(val_total_acc)
+
+            self.save_best_weights(val_total_acc)
 
             if verbose and (epoch % print_stride == 0 or epoch == num_epochs - 1):
                 print(f"\r[epoch: {self.global_epoch:02d}/{start_epoch + num_epochs:02d}] "
                       f"[Train loss: {train_epoch_loss:.6f} "
-                      f" Train {self.score_name}: {train_total_score:.3f}]  "
-                      f"[Val loss: {val_epoch_loss:.6f}] "
-                      f" Val {self.score_name}: {val_total_score:.3f}]")
+                      f" Train acc: {100 * train_total_acc:.6f}%]  "
+                      f"[Val loss: {val_epoch_loss:.6f} "
+                      f" Val acc: {100 * val_total_acc:.6f}%]")
         self.cpu()
 
-    def __train_step(self, x: Tensor, y: Tensor, optimizer: optim.Optimizer,
-                     use_cuda: bool) -> Tuple[Tensor, float]:
+    def __train_step(self, x: Tensor, y: Tensor, optimizer: optim.Optimizer) -> Tuple[Tensor, float]:
         """
         Performs a single training step.
 
@@ -131,31 +119,27 @@ class BaseModel(nn.Module):
             x (Tensor) - Input tensor.
             y (Tensor) - Target tensor.
             optimizer (Optimizer) - Optimizer.
-            use_cuda (bool) - Use CUDA flag.
-
+        
+        Returns:
+            Tuple[Tensor, float] - The model's output and the loss of the model.
         """
         # zero the parameter gradients.
         optimizer.zero_grad()
 
         # forward + backward + optimize.
-        y_hat = self(x)
+        y_hat: Tensor = self(x)
 
-        if self.task_type == "regression":
-            y = y.reshape_as(y_hat)
-
-        loss = self.criterion(y_hat, y)
+        loss: Tensor = self.criterion(y_hat, y)
         loss.backward()
         optimizer.step()
 
-        # Calc loss.
         lloss = loss.item()
 
         return y_hat, lloss
 
     def calc_metrics(self, data_loader: DataLoader, use_cuda: bool) -> Tuple[float, float]:
         """
-        Calculates and returns the loss and the score of the model on a give dataset.
-        the score is the accuracy for classification tasks and the MSE for regression tasks.
+        Calculates and returns the loss and the accuracy of the model on a given dataset.
 
         Args:
             data_loader (DataLoader) - Data loader.
@@ -164,35 +148,38 @@ class BaseModel(nn.Module):
         Returns:
             Tuple[float, float] - The loss and score of the model on the given dataset.            
         """
-        running_loss = 0.
-        score = 0.
+        running_loss: float = 0.
+        total_corrects: int = 0
         self.eval()
         with torch.no_grad():
             for x, y in data_loader:
                 if use_cuda:
                     x: Tensor = x.cuda(); y: Tensor = y.cuda()
-                
-                y_hat = self(x)
 
-                if self.task_type == "classification":
-                    score += (torch.argmax(y_hat, dim=1) == y).sum().item()
+                y_hat: Tensor = self(x)
+                loss: float = self.criterion(y_hat, y).item()
 
-                elif self.task_type == "regression":
-                    y = y.reshape_as(y_hat)
-                    score += F.mse_loss(y_hat, y).item() * x.size(0)
-
-                running_loss += self.criterion(y_hat, y).item() * x.size(0)
+                running_loss, total_corrects = self._calc_running_matrics(
+                    x, y_hat, y, loss, running_loss, total_corrects)
 
         self.train()
         total_loss = running_loss / len(data_loader.dataset)  # type: ignore
-        total_score = score / len(data_loader.dataset)  # type: ignore
-        return total_loss, total_score
+        total_acc = total_corrects / len(data_loader.dataset)  # type: ignore
+        return total_loss, total_acc
+
+    def _calc_running_matrics(self, x: Tensor, y_hat: Tensor, y: Tensor, loss: float,
+                              running_loss: float, total_corrects: int) -> Tuple[float, int]:
+        corrects = int((y_hat.argmax(1) == y).sum().item())
+
+        running_loss += loss * x.size(0)
+        total_corrects += corrects
+        return running_loss, total_corrects
 
     def save_best_weights(self, score: float) -> None:
         """Saves the best weights of the model."""
         if self.best_weights is None:
             self.best_weights = copy.deepcopy(self.state_dict())
-        elif score > max(self.val_scores):
+        elif score > max(self.val_accs):
             self.best_weights = copy.deepcopy(self.state_dict())
 
     def load_best_weights(self):
@@ -203,8 +190,6 @@ class BaseModel(nn.Module):
     def get_outputs(self, data_loader: DataLoader, try_cuda: bool = True) -> Tuple[Tensor, Tensor]:
         """
         Calculates and returns the outputs of the model on a given dataset.
-        
-        **Note: Useless for regression tasks.**
 
         Args:
             data_loader (DataLoader) - Data loader.
@@ -221,8 +206,8 @@ class BaseModel(nn.Module):
         with torch.no_grad():
             for x, _ in data_loader:
                 if use_cuda:
-                    x = x.cuda()
-                y_hat = self(x)
+                    x: Tensor = x.cuda()
+                y_hat: Tensor = self(x)
                 outputs.append(y_hat)
         self.train()
         logits, preds = torch.cat(outputs).max()
