@@ -23,6 +23,8 @@ TEST_CSV_PATH = DATA_PATH / "test.csv"
 
 
 # ================================= Constants ================================ #
-EXAMPLE_ID = "4003253"
-
+EXAMPLE_ID: str = "4003253"
+EXAMPLE_SAGITTAL_T1_ID: str = "1054713880"
+EXAMPLE_AXIAL_T2_ID: str = "2448190387"
+EXAMPLE_STIR_ID: str = "702807833"
 # ============================= End Of Constants ============================= #
