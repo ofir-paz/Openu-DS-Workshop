@@ -1,12 +1,17 @@
 """
 config.py
 
-This module contains configuration settings for the application.
+This file contains configuration settings for the project, such as paths and constants.
+It also sets the root directory of the module to the project's root directory.
+
+@Author: Ofir Paz
+@Version: 14.08.2024
 """
 
 
 # ================================== Imports ================================= #
 import os
+import sys
 from pathlib import Path
 # ============================== End Of Imports ============================== #
 
@@ -28,3 +33,6 @@ EXAMPLE_SAGITTAL_T1_ID: str = "1054713880"
 EXAMPLE_AXIAL_T2_ID: str = "2448190387"
 EXAMPLE_STIR_ID: str = "702807833"
 # ============================= End Of Constants ============================= #
+
+# Set the root directory of the project.
+sys.path.append(str(PROJECT_PATH))
