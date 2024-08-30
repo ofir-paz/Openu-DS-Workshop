@@ -25,7 +25,8 @@ TEST_IMAGES_PATH = DATA_PATH / "test_images"
 TRAIN_SERIES_DESCRIPTIONS_CSV_PATH = DATA_PATH / "train_series_descriptions.csv"
 TRAIN_LABEL_COORDINATES_CSV_PATH = DATA_PATH / "train_label_coordinates.csv"
 TRAIN_CSV_PATH = DATA_PATH / "train.csv"
-TEST_CSV_PATH = DATA_PATH / "test.csv"
+TEST_CSV_PATH = DATA_PATH / "test_series_descriptions.csv"
+SUBMISSION_CSV_PATH = DATA_PATH / "sample_submission.csv"
 # ======================== End Of Configuration Paths ======================== #
 
 
