@@ -32,9 +32,12 @@ SUBMISSION_CSV_PATH = DATA_PATH / "sample_submission.csv"
 
 # ================================= Constants ================================ #
 EXAMPLE_ID: str = "4003253"
+EXAMPLE_STIR_ID: str = "702807833"
 EXAMPLE_SAGITTAL_T1_ID: str = "1054713880"
 EXAMPLE_AXIAL_T2_ID: str = "2448190387"
 EXAMPLE_SAGITTAL_T2_STIR_ID: str = "702807833"
+THREEDIM_MRI_SHAPE = (30, 300, 300)
+
 # ============================= End Of Constants ============================= #
 
 # Set the root directory of the project.
