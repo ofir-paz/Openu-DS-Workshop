@@ -27,6 +27,7 @@ TRAIN_LABEL_COORDINATES_CSV_PATH = DATA_PATH / "train_label_coordinates.csv"
 TRAIN_CSV_PATH = DATA_PATH / "train.csv"
 TEST_CSV_PATH = DATA_PATH / "test_series_descriptions.csv"
 SUBMISSION_CSV_PATH = DATA_PATH / "sample_submission.csv"
+MODEL_PATH = PROJECT_PATH / "wholeBrainSeg_Large_UNEST_segmentation/models/model.pt"
 # ======================== End Of Configuration Paths ======================== #
 
 
