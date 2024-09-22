@@ -188,3 +188,4 @@ wholeBrainSeg_Large_UNEST_segmentation/scripts/networks/unest_base_patch_4.py
 wholeBrainSeg_Large_UNEST_segmentation/scripts/networks/unest_block.py
 wholeBrainSeg_Large_UNEST_segmentation/scripts/networks/nest/__init__.py
 wholeBrainSeg_Large_UNEST_segmentation/scripts/networks/nest/utils.py
+.DS_Store
