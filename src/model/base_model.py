@@ -8,26 +8,34 @@ Contains the base model class.
 """
 
 # ================================== Imports ================================= #
+import os
+import glob
 import copy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.optim as optim
-from torchmetrics import Accuracy
 from torch import Tensor
 from torch.nn.modules.loss import _Loss as BaseNNLossModule
-from typing import Literal, Tuple, Union, Optional
+from typing import Tuple, Optional, Union
+from src.config import MODELS_PATH
+from tqdm import tqdm
 # ============================== End Of Imports ============================== #
 
 
 # ============================== BaseModel Class ============================= #
 class BaseModel(nn.Module):
     """Base model class."""
-
-    def __init__(self) -> None:
+    def __init__(self, name: str = "") -> None:
         """Constructor."""
-        super(BaseModel, self).__init__()
+        if not isinstance(name, str):
+            raise TypeError("Model name must be a string.")
+        elif name == "":
+            raise ValueError("Model name must be provided.")
+        elif "=" in name:
+            raise ValueError("Model name cannot contain the '=' character.")
+        super().__init__()
         self.best_weights: Optional[dict[str, Tensor]] = None
         self.global_epoch: int = 0
         
@@ -36,7 +44,8 @@ class BaseModel(nn.Module):
         self.train_accs: list[float] = []
         self.val_accs: list[float] = []
 
-        self.criterion: BaseNNLossModule = nn.CrossEntropyLoss()   
+        self.criterion: BaseNNLossModule = nn.NLLLoss()
+        self.name: str = name
 
     def forward(self, *args, **kwargs) -> Tensor:
         """Forward pass."""
@@ -79,9 +88,9 @@ class BaseModel(nn.Module):
                 if use_cuda:
                     x: Tensor = x.cuda(); y: Tensor = y.cuda()
 
-                y_hat, loss = self.__train_step(x, y, optimizer)
+                y_hat, loss = self._train_step(x, y, optimizer)
 
-                running_loss, total_corrects = self._calc_running_matrics(
+                running_loss, total_corrects = self._calc_running_metrics(
                     x, y_hat, y, loss, running_loss, total_corrects)
 
                 # TODO: Use tqdm instead of print.
@@ -92,16 +101,18 @@ class BaseModel(nn.Module):
 
             train_epoch_loss = running_loss / len(train_loader.dataset)  # type: ignore
             train_total_acc = total_corrects / len(train_loader.dataset)  # type: ignore
-            self.train_costs.append(train_epoch_loss); self.train_accs.append(train_total_acc)
+            self.train_costs.append(train_epoch_loss)
+            self.train_accs.append(train_total_acc)
             
             if val_loader is not None:
                 val_epoch_loss, val_total_acc = self.calc_metrics(val_loader, use_cuda)
             else:
                 val_epoch_loss, val_total_acc = torch.nan, torch.nan
 
-            self.val_costs.append(val_epoch_loss); self.val_accs.append(val_total_acc)
+            self.val_costs.append(val_epoch_loss)
+            self.val_accs.append(val_total_acc)
 
-            self.save_best_weights(val_total_acc)
+            self.save_best_weights()
 
             if verbose and (epoch % print_stride == 0 or epoch == num_epochs - 1):
                 print(f"\r[epoch: {self.global_epoch:02d}/{start_epoch + num_epochs:02d}] "
@@ -111,7 +122,7 @@ class BaseModel(nn.Module):
                       f" Val acc: {100 * val_total_acc:.6f}%]")
         self.cpu()
 
-    def __train_step(self, x: Tensor, y: Tensor, optimizer: optim.Optimizer) -> Tuple[Tensor, float]:
+    def _train_step(self, x: Tensor, y: Tensor, optimizer: optim.Optimizer) -> Tuple[Tensor, float]:
         """
         Performs a single training step.
 
@@ -129,7 +140,7 @@ class BaseModel(nn.Module):
         # forward + backward + optimize.
         y_hat: Tensor = self(x)
 
-        loss: Tensor = self.criterion(y_hat, y)
+        loss: Tensor = self.criterion(y_hat.view(-1, y_hat.size(-1)), y.view(-1))
         loss.backward()
         optimizer.step()
 
@@ -152,14 +163,14 @@ class BaseModel(nn.Module):
         total_corrects: int = 0
         self.eval()
         with torch.no_grad():
-            for x, y in data_loader:
+            for x, y in tqdm(data_loader, desc="Validation", total=len(data_loader)):
                 if use_cuda:
                     x: Tensor = x.cuda(); y: Tensor = y.cuda()
 
                 y_hat: Tensor = self(x)
-                loss: float = self.criterion(y_hat, y).item()
+                loss: float = self.criterion(y_hat.view(-1, y_hat.size(-1)), y.view(-1)).item()
 
-                running_loss, total_corrects = self._calc_running_matrics(
+                running_loss, total_corrects = self._calc_running_metrics(
                     x, y_hat, y, loss, running_loss, total_corrects)
 
         self.train()
@@ -167,25 +178,33 @@ class BaseModel(nn.Module):
         total_acc = total_corrects / len(data_loader.dataset)  # type: ignore
         return total_loss, total_acc
 
-    def _calc_running_matrics(self, x: Tensor, y_hat: Tensor, y: Tensor, loss: float,
+    def _calc_running_metrics(self, x: Tensor, y_hat: Tensor, y: Tensor, loss: float,
                               running_loss: float, total_corrects: int) -> Tuple[float, int]:
-        corrects = int((y_hat.argmax(1) == y).sum().item())
+        corrects = int((y_hat.argmax(-1) == y).sum().item())
 
         running_loss += loss * x.size(0)
         total_corrects += corrects
         return running_loss, total_corrects
 
-    def save_best_weights(self, score: float) -> None:
+    def save_best_weights(self) -> None:
         """Saves the best weights of the model."""
-        if self.best_weights is None:
+        if self.best_weights is None or self.val_accs[-1] > max(self.val_accs[:-1]):
             self.best_weights = copy.deepcopy(self.state_dict())
-        elif score > max(self.val_accs):
-            self.best_weights = copy.deepcopy(self.state_dict())
+            torch.save(self.best_weights, MODELS_PATH / f"{self.name}_e={self.global_epoch}.pt")
+            self._cleanup_old_models()
 
     def load_best_weights(self):
         """Loads the best weights of the model."""
         assert self.best_weights is not None, "No weights to load."
         self.load_state_dict(self.best_weights)
+
+    def _cleanup_old_models(self):
+        """Removes old model files, keeping only the last 5."""
+        model_files = glob.glob(str(MODELS_PATH / f"{self.name}_e=*.pt"))
+        model_files.sort(key=os.path.getmtime, reverse=True)
+        if len(model_files) > 5:
+            for old_model in model_files[5:]:
+                os.remove(old_model)
 
     def get_outputs(self, data_loader: DataLoader, try_cuda: bool = True) -> Tuple[Tensor, Tensor]:
         """
@@ -214,5 +233,21 @@ class BaseModel(nn.Module):
         probs = torch.softmax(logits, dim=1)
 
         return preds, probs
+    
+    @classmethod
+    def load_model(cls, name: str, epoch: Union[int, str]) -> "BaseModel":
+        """
+        Loads a model from a file.
+
+        Args:
+            name (str) - The model's name.
+            epoch (Union[int, str]) - The epoch to load.
+
+        Returns:
+            BaseModel - The loaded model.
+        """
+        model = cls(name)
+        model.load_state_dict(torch.load(MODELS_PATH / f"{name}_e={epoch}.pt"))
+        return model
 
 # ========================== End Of BaseModel Class ========================== #

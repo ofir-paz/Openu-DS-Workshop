@@ -24,6 +24,7 @@ TRAIN_IMAGES_PATH = DATA_PATH / "train_images"
 TEST_IMAGES_PATH = DATA_PATH / "test_images"
 TRAIN_CSV_PATH = DATA_PATH / "train.csv"
 TEST_CSV_PATH = DATA_PATH / "test.csv"
+MODELS_PATH = PROJECT_PATH / "saved_models"
 # ======================== End Of Configuration Paths ======================== #
 
 
@@ -35,4 +36,5 @@ EXAMPLE_STIR_ID: str = "702807833"
 # ============================= End Of Constants ============================= #
 
 # Set the root directory of the project.
-sys.path.append(str(PROJECT_PATH))
+if str(PROJECT_PATH) not in sys.path:
+    sys.path.append(str(PROJECT_PATH))
