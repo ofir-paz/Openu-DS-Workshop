@@ -14,9 +14,8 @@ from typing import Any, Union, Tuple, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-from pydicom.pixel_data_handlers.util import apply_voi_lut
 from scipy.ndimage import zoom
-from src.loaders import load_dicom_series
+from src.dataset.spine_dataset import load_dicom_series
 # ============================== End Of Imports ============================== #
 
 
