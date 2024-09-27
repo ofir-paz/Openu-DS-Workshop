@@ -11,7 +11,8 @@ def main() -> None:
     train_dataloader = DataLoader(train_dataset, batch_size=None, shuffle=True, num_workers=8)
     val_dataloader = DataLoader(val_dataset, batch_size=None, shuffle=False, num_workers=8)
 
-    model = LumbarSpineStenosisResNet(pretrained=True, progress=True, hidden_size=2048, dropout=0.4)
+    model = LumbarSpineStenosisResNet(pretrained=True, progress=True, hidden_size=2048, dropout=0.4,
+                                      name="lumbar_spine_cnn_v1")
     # If you want to use SGD instead of Adam, you need to manually set the optimizer in base_model.py.
     # momentum parameter is only used in SGD.
     model.fit(train_loader=train_dataloader, val_loader=val_dataloader, num_epochs=20,
