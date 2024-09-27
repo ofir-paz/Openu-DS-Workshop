@@ -10,7 +10,10 @@ Contains the base model class.
 # ================================== Imports ================================= #
 import os
 import glob
+import re
 import copy
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,8 +24,11 @@ from torch.nn.modules.loss import _Loss as BaseNNLossModule
 from typing import Tuple, Optional, Union
 from src.config import MODELS_PATH
 from tqdm import tqdm
+import logging
 # ============================== End Of Imports ============================== #
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s.%(levelname)s: %(message)s")
+logger = logging.getLogger("model.base_model")
 
 # ============================== BaseModel Class ============================= #
 class BaseModel(nn.Module):
@@ -35,6 +41,7 @@ class BaseModel(nn.Module):
             raise ValueError("Model name must be provided.")
         elif "=" in name:
             raise ValueError("Model name cannot contain the '=' character.")
+        self.make_model_dir(name, num_tries=5)
         super().__init__()
         self.best_weights: Optional[dict[str, Tensor]] = None
         self.global_epoch: int = 0
@@ -190,8 +197,9 @@ class BaseModel(nn.Module):
         """Saves the best weights of the model."""
         if self.best_weights is None or self.val_accs[-1] > max(self.val_accs[:-1]):
             self.best_weights = copy.deepcopy(self.state_dict())
-            torch.save(self.best_weights, MODELS_PATH / f"{self.name}_e={self.global_epoch}.pt")
             self._cleanup_old_models()
+            logger.info(f"Saving model weights at epoch: {self.global_epoch}")
+            torch.save(self.best_weights, self.model_dir / f"{self.name}_e={self.global_epoch}.pt")
 
     def load_best_weights(self):
         """Loads the best weights of the model."""
@@ -200,10 +208,19 @@ class BaseModel(nn.Module):
 
     def _cleanup_old_models(self):
         """Removes old model files, keeping only the last 5."""
-        model_files = glob.glob(str(MODELS_PATH / f"{self.name}_e=*.pt"))
-        model_files.sort(key=os.path.getmtime, reverse=True)
+        model_files = glob.glob(str(self.model_dir / f"{self.name}_e=*.pt"))
         if len(model_files) > 5:
-            for old_model in model_files[5:]:
+            # Extract integer values from filenames
+            def extract_epoch(filename: str) -> Union[int, float]:
+                match = re.search(r"_e=(\d+)\.pt", filename)
+                return int(match.group(1)) if match else float('inf')
+
+            # Sort files by extracted integer values
+            model_files.sort(key=extract_epoch)
+
+            # Delete old files, keeping only the last 5
+            for old_model in model_files[:-5]:
+                logger.warning(f"Too many model checkpoints, Removing old model: {old_model}")
                 os.remove(old_model)
 
     def get_outputs(self, data_loader: DataLoader, try_cuda: bool = True) -> Tuple[Tensor, Tensor]:
@@ -247,7 +264,27 @@ class BaseModel(nn.Module):
             BaseModel - The loaded model.
         """
         model = cls(name)
-        model.load_state_dict(torch.load(MODELS_PATH / f"{name}_e={epoch}.pt"))
+        model.load_state_dict(torch.load(MODELS_PATH / f"{name}_ckpts" / f"{name}_e={epoch}.pt"))
         return model
 
+    def make_model_dir(self, name: str, num_tries: int = 3) -> None:
+        """Creates the model directory."""
+        model_dir = MODELS_PATH / f"{name}_ckpts"
+        if not model_dir.exists():
+            for try_num in range(num_tries + 1):
+                if try_num == num_tries:
+                    logger.error(f"Failed to create model directory: {model_dir}")
+                    raise Exception(f"Failed to create model directory: {model_dir}")
+                try:
+                    model_dir.mkdir()
+                    logger.info(f"Created model directory: {model_dir}")
+                    break
+                except Exception as e:
+                    logger.error(f"[Try: {try_num+1}/{num_tries+1}] - Failed to create model directory: {model_dir}."
+                                 f" {e}")
+        else:
+            logger.warning(f"Model directory already exists: {model_dir}."
+                           f"\nMake sure you are not overwriting an existing model.")
+
+        self.model_dir: Path = model_dir
 # ========================== End Of BaseModel Class ========================== #
