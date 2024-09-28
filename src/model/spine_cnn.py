@@ -179,7 +179,7 @@ class MultiModelSpineCNN(BaseModel):
         # Handle case when there are no series of a certain type.
         for i in range(len(self.models)):
             if out_features[i] == []:
-                out_features[i] = [torch.zeros(1, self.models[i].out_features_size, device=self._device)]
+                out_features[i] = [torch.zeros(self.models[i].out_features_size, device=self._device)]
 
         # Handle multiple same series types.
         out_features = [torch.stack(out).mean(dim=0) for out in out_features]
