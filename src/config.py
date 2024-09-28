@@ -28,6 +28,11 @@ MODELS_PATH = PROJECT_PATH / "saved_models"
 # ======================== End Of Configuration Paths ======================== #
 
 
+# =============================== Encoding Maps ============================== #
+SERIES_S2I = {"Sagittal T1": 0, "Sagittal T2/STIR": 1, "Axial T2": 2}
+# =========================== End Of Encoding Maps =========================== #
+
+
 # ================================= Constants ================================ #
 EXAMPLE_ID: str = "4003253"
 EXAMPLE_SAGITTAL_T1_ID: str = "1054713880"
