@@ -161,7 +161,7 @@ class MultiModelSpineCNN(BaseModel):
 
         self.optimizer: Optional[optim.Optimizer] = None
         self.scheduler: Optional[lr_scheduler.LRScheduler] = None
-        self._device: Literal["cpu", "gpu"] = "cpu"
+        self._device: Literal["cpu", "cuda"] = "cpu"
 
     def forward(self, data_dict: Dict[str, Union[List[Tensor], Tensor]]) -> Tensor:
         assert "data" in data_dict and "series_types" in data_dict, \
@@ -198,7 +198,7 @@ class MultiModelSpineCNN(BaseModel):
         use_cuda = try_cuda and torch.cuda.is_available()
         if use_cuda:
             self.cuda()
-            self._device = "gpu"
+            self._device = "cuda"
             logger.info("Using CUDA for training.")
         else:
             self.cpu()
@@ -259,6 +259,7 @@ class MultiModelSpineCNN(BaseModel):
                             f" Val acc: {100 * val_total_acc:.6f}%]")
             self.scheduler.step()
 
+        self._device = "cpu"
         self.cpu()
 
     def train_step(
