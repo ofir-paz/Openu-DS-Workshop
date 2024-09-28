@@ -16,6 +16,7 @@ from src.config import (
     TRAIN_IMAGES_PATH,
     TEST_IMAGES_PATH,
     TRAIN_CSV_PATH,
+    SERIES_S2I
 )
 
 
@@ -23,7 +24,8 @@ def add_channel_dim(x: torch.Tensor) -> torch.Tensor:
     return x.unsqueeze(1)
 
 
-class LumbarSpineDataset(Dataset):
+class BaseLumbarSpineDataset(Dataset):
+
     conditions_i2s: List[str] = [
         "spinal_canal_stenosis_l1_l2", "spinal_canal_stenosis_l2_l3", "spinal_canal_stenosis_l3_l4",
         "spinal_canal_stenosis_l4_l5", "spinal_canal_stenosis_l5_s1", "left_neural_foraminal_narrowing_l1_l2",
@@ -54,11 +56,12 @@ class LumbarSpineDataset(Dataset):
 
     def __init__(
         self,
-        train: bool, 
+        train: bool,
         *,
         preprocess: Optional[transforms.Compose] = None,
         augs: Optional[transforms.Compose] = None
     ) -> None:
+        super().__init__()
         self.train = train
         self.preprocess: transforms.Compose = preprocess or self.default_preprocess
         self.augs = augs
@@ -71,14 +74,20 @@ class LumbarSpineDataset(Dataset):
             self.train_csv = pd.read_csv(TRAIN_CSV_PATH, index_col="study_id")
         else:
             raise NotImplementedError("Test dataset is not implemented yet.")
-    
+
+    def split(self, val_size: float = 0.2) -> tuple["BaseLumbarSpineDataset", "BaseLumbarSpineDataset"]:
+        return random_split(self, [1 - val_size, val_size])  # type: ignore
+
+
+class SingleModelLumbarSpineDataset(BaseLumbarSpineDataset):
+
     def __len__(self) -> int:
         return self.series_description.shape[0]
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """returns x (D, 1, H, W), y (75)"""
         desc_row = self.series_description.iloc[idx]
-        series_path = self.images_path / str(desc_row["study_id"]) / str(desc_row["series_id"])        
+        series_path = self.images_path / str(desc_row["study_id"]) / str(desc_row["series_id"])
         dicom_files = load_dicom_series(series_path)
 
         x: torch.Tensor = self.preprocess(dicom_files)  # type: ignore - torch.from_numpy
@@ -92,11 +101,47 @@ class LumbarSpineDataset(Dataset):
             )
         else:
             y = None
-        
+
         return x, y
-    
-    def split(self, val_size: float = 0.2) -> tuple["LumbarSpineDataset", "LumbarSpineDataset"]:
-        return random_split(self, [1 - val_size, val_size])  # type: ignore
+
+
+class MultiModelLumbarSpineDataset(BaseLumbarSpineDataset):
+    def __init__(
+        self,
+        train: bool, 
+        *,
+        preprocess: Optional[transforms.Compose] = None,
+        augs: Optional[transforms.Compose] = None
+    ) -> None:
+        super().__init__(train=train, preprocess=preprocess, augs=augs)
+        self.series_description.set_index("study_id", inplace=True)
+        self.study_ids = self.series_description.index.unique()
+
+    def __len__(self) -> int:
+        return self.study_ids.shape[0]
+
+    def __getitem__(self, idx: int) -> Dict[str, Union[List[torch.Tensor], torch.Tensor]]:
+        """returns {"data": [(D, 1, H, W)], "target": (25), "series_types": [(0-2)]}"""
+        study_id = self.study_ids[idx]
+        study_df = self.series_description.loc[study_id]  # Expect at least 2 MRI series per study.
+        series_paths = study_df["series_id"].apply(
+            lambda series_id: self.images_path / str(study_id) / str(series_id)
+        )
+        data_dict = {
+            "data": series_paths.apply(load_dicom_series).apply(self.preprocess).tolist(),
+            "series_types": torch.tensor(study_df["series_description"].map(SERIES_S2I).values,
+                                         dtype=torch.int64)
+        }
+        if self.train:
+            if self._apply_augs and self.augs is not None:
+                data_dict["data"] = list(map(self.augs, data_dict["data"]))
+            condition_row = self.train_csv.loc[study_id]
+            data_dict["target"] = torch.tensor(
+                [self.severity_s2i.get(condition_row[col], self.nan_class) for col in self.conditions_i2s],
+                dtype=torch.int64
+            )
+
+        return data_dict
 
 
 def load_dicom_series(directory: Union[str, Path]) -> np.ndarray:
