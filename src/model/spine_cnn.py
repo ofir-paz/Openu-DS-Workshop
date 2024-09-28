@@ -2,9 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+import torch.optim as optim
+import torch.optim.lr_scheduler as lr_scheduler
 from torchvision.models.video import r3d_18, R3D_18_Weights
+from torch.utils.data import DataLoader
 from src.model.base_model import BaseModel
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Dict, Union, Optional, Literal
+from tqdm import tqdm
+import logging
+
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s.%(levelname)s: %(message)s")
+logger = logging.getLogger("model.spine_cnn")
 
 
 class LumbarSpineStenosisResNet(BaseModel):
@@ -75,4 +84,184 @@ class LumbarSpineStenosisResNet(BaseModel):
 
         running_loss += loss
         total_corrects += corrects / self.num_levels / self.num_conditions
+        return running_loss, total_corrects
+
+
+class SingleModelSpineCNN(LumbarSpineStenosisResNet):
+    """Single-Model Spine CNN model."""
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, name="do_not_save", **kwargs)
+        _dropout_val = kwargs.get("dropout", kwargs.get("p", 0.5))
+        _out_features_size = kwargs.get("out_features_size", 512)
+
+        # Reinitialize the fully connected layer.
+        self.resnet3d.fc = nn.Linear(self.resnet3d.fc[0].in_features, _out_features_size)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.resnet3d(x).view(-1)  # Batch size must be 1.
+        return x
+
+
+class MultiModelSpineCNN(BaseModel):
+    """Multi-Model Spine CNN model."""
+    def __init__(self, sag_T1_args: dict, sag_T2_args: dict, axial_T2_args: dict,
+                 last_fc_dim: int = 1024, dropout: float = 0.5, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.sag_T1_model = SingleModelSpineCNN(**sag_T1_args)
+        self.sag_T2_model = SingleModelSpineCNN(**sag_T2_args)
+        self.axial_T2_model = SingleModelSpineCNN(**axial_T2_args)
+        self.models = [self.sag_T1_model, self.sag_T2_model, self.axial_T2_model]
+        self.fc = nn.Sequential(
+            nn.Linear(sag_T1_args["out_features_size"] + sag_T2_args["out_features_size"]
+                      + axial_T2_args["out_features_size"], last_fc_dim),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+            nn.Linear(last_fc_dim, SingleModelSpineCNN.num_total_classes)
+        )
+        self.log_softmax = nn.LogSoftmax(dim=1)
+
+        self.optimizer: Optional[optim.Optimizer] = None
+        self.scheduler: Optional[lr_scheduler.LRScheduler] = None
+        self._device: Literal["cpu", "gpu"] = "cpu"
+
+    def forward(self, data_dict: Dict[str, Union[List[Tensor], Tensor]]) -> Tensor:
+        assert "data" in data_dict and "series_types" in data_dict, \
+            "data_dict must contain 'data' and 'series_types' keys."
+        assert len(data_dict["data"]) > 0 and len(data_dict["series_types"]) > 0, \
+            "data and series_types must not be empty."
+        assert len(data_dict["data"]) == len(data_dict["series_types"]), \
+            "data and series_types must have the same length."
+
+        # Assume series_type is encoded.
+        out_features = [[], [], []]
+        for i, (data, series_type) in enumerate(zip(data_dict["data"], data_dict["series_types"])):
+            out_features[series_type].append(self.models[series_type](data))
+
+        # Handle multiple same series types.
+        out_features = [torch.stack(out).mean(dim=0) for out in out_features]
+        total_features = torch.cat(out_features, dim=0)
+
+        y_hat = self.fc(total_features)
+        y_hat = y_hat.view(SingleModelSpineCNN.num_levels * SingleModelSpineCNN.num_conditions,
+                           SingleModelSpineCNN.num_severities)
+        y_hat = self.log_softmax(y_hat)
+        return y_hat.unsqueeze(0)  # Add a batch dimension.
+
+    def fit(self, train_loader: DataLoader, val_loader: Optional[DataLoader] = None,
+            num_epochs: int = 30, lr: float = 0.001, momentum: float = 0.9, wd: float = 0.,
+            try_cuda: bool = True, verbose: bool = True, print_stride: int = 1) -> None:
+        """Override function for training a multi-model spine 3D-CNN."""
+        use_cuda = try_cuda and torch.cuda.is_available()
+        if use_cuda:
+            self.cuda()
+            self._device = "gpu"
+            logger.info("Using CUDA for training.")
+        else:
+            self.cpu()
+            self._device = "cpu"
+            logger.info("Using CPU for training.")
+
+        # Create the optimizer.
+        self.optimizer = optim.AdamW(self.parameters(), lr=lr, weight_decay=wd)
+        self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=num_epochs)
+
+        start_epoch = self.global_epoch
+        for epoch in range(num_epochs):
+            running_loss: float = 0.
+            total_corrects: int = 0
+            self.global_epoch += 1
+            for mb, data_dict in enumerate(train_loader):
+                data_dict: Dict[str, Union[List[Tensor], Tensor]]
+                # Assume batch size is 1, remove the batch dimension.
+                #data_dict["data"] = [x[0] for x in data_dict["data"]]
+                data_dict["target"] = data_dict["target"][0]
+                data_dict["series_types"] = data_dict["series_types"][0]
+                if use_cuda:
+                    data_dict["data"]: List[Tensor] = [x.cuda() for x in data_dict["data"]]
+                    data_dict["target"]: Tensor = data_dict["target"].cuda()
+
+                y_hat, loss = self.train_step(data_dict)
+
+                running_loss, total_corrects = self.calc_running_metrics(
+                    data_dict, y_hat, loss, running_loss, total_corrects)
+
+                # TODO: Use tqdm instead of print.
+                if verbose:
+                    print(f"\r[epoch: {self.global_epoch:02d}/{start_epoch + num_epochs:02d} "
+                          f"mb: {mb + 1:03d}/{len(train_loader):03d}  lr: {self.scheduler.get_last_lr()[0]:.6f}]  "
+                          f"[Train loss: {loss:.6f}]\033[J", end="")
+
+            train_epoch_loss = running_loss / len(train_loader.dataset)  # type: ignore
+            train_total_acc = total_corrects / len(train_loader.dataset)  # type: ignore
+            self.train_costs.append(train_epoch_loss)
+            self.train_accs.append(train_total_acc)
+
+            if val_loader is not None:
+                val_epoch_loss, val_total_acc = self.calc_metrics(val_loader, use_cuda)
+            else:
+                val_epoch_loss, val_total_acc = torch.nan, torch.nan
+
+            self.val_costs.append(val_epoch_loss)
+            self.val_accs.append(val_total_acc)
+
+            self.save_best_weights()
+
+            if verbose and (epoch % print_stride == 0 or epoch == num_epochs - 1):
+                logger.info(f"\r[epoch: {self.global_epoch:02d}/{start_epoch + num_epochs:02d}"
+                            f"  lr: {self.scheduler.get_last_lr()[0]:.6f}] "
+                            f"[Train loss: {train_epoch_loss:.6f} "
+                            f" Train acc: {100 * train_total_acc:.6f}%]  "
+                            f"[Val loss: {val_epoch_loss:.6f} "
+                            f" Val acc: {100 * val_total_acc:.6f}%]")
+            self.scheduler.step()
+
+        self.cpu()
+
+    def train_step(
+        self, data_dict: Dict[str, Union[List[Tensor], Tensor]]
+    ) -> Tuple[Tensor, float]:
+        self.optimizer.zero_grad()
+        y_hat = self(data_dict)
+        loss = F.nll_loss(y_hat.view(-1, y_hat.size(-1)), data_dict["target"])
+        loss.backward()
+        self.optimizer.step()
+        return y_hat, loss.item()
+
+    def calc_metrics(self, data_loader: DataLoader, use_cuda: bool) -> Tuple[float, float]:
+        """Override function for calculating the validation metrics."""
+        running_loss: float = 0.
+        total_corrects: int = 0
+        self.eval()
+        with torch.no_grad():
+            for data_dict in tqdm(data_loader, desc="Validation", total=len(data_loader)):
+                data_dict: Dict[str, Union[List[Tensor], Tensor]]
+                # Assume batch size is 1, remove the batch dimension.
+                # data_dict["data"] = [x[0] for x in data_dict["data"]]
+                data_dict["target"] = data_dict["target"][0]
+                data_dict["series_types"] = data_dict["series_types"][0]
+                if use_cuda:
+                    data_dict["data"]: List[Tensor] = [x.cuda() for x in data_dict["data"]]
+                    data_dict["target"]: Tensor = data_dict["target"].cuda()
+
+                y_hat: Tensor = self(data_dict)
+                loss: float = F.nll_loss(
+                    y_hat.view(-1, y_hat.size(-1)), data_dict["target"]
+                ).item()
+
+                running_loss, total_corrects = self.calc_running_metrics(
+                    data_dict, y_hat, loss, running_loss, total_corrects)
+
+        self.train()
+        total_loss = running_loss / len(data_loader.dataset)  # type: ignore
+        total_acc = total_corrects / len(data_loader.dataset)  # type: ignore
+        return total_loss, total_acc
+
+    def calc_running_metrics(
+        self, data_dict: Dict[str, Union[List[Tensor], Tensor]], y_hat: Tensor, loss: float,
+        running_loss: float, total_corrects: int
+    ) -> Tuple[float, int]:
+        """Override function for calculating the running metrics."""
+        corrects = int((y_hat.argmax(-1) == data_dict["target"]).sum().item())
+        running_loss += loss
+        total_corrects += corrects / LumbarSpineStenosisResNet.num_levels / LumbarSpineStenosisResNet.num_conditions
         return running_loss, total_corrects

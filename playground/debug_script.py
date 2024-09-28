@@ -11,18 +11,19 @@ if __name__ == "__main__":
     print(f"Added {PROJECT_PATH} to the Python path.")
 
     from torch.utils.data import DataLoader
-    from src.model.spine_cnn import LumbarSpineStenosisResNet
-    from src.dataset.spine_dataset import LumbarSpineDataset
+    from src.model.spine_cnn import MultiModelSpineCNN
+    from src.dataset.spine_dataset import SingleModelLumbarSpineDataset, MultiModelLumbarSpineDataset
 
-    dataset = LumbarSpineDataset(True)
-    train_dataset, val_dataset = dataset.split(val_size=0.95)
+    dataset = MultiModelLumbarSpineDataset(train=True)
+    train_dataset, val_dataset = dataset.split(val_size=0.998)
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=0)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0)
 
-    model = LumbarSpineStenosisResNet(pretrained=False, progress=True, hidden_size=1024, dropout=0.2, name="test")
+    sag_t1_args = dict(pretrained=True, progress=True, out_features_size=512)
+    sag_t2_args = dict(pretrained=True, progress=True, out_features_size=512)
+    axial_t2_args = dict(pretrained=True, progress=True, out_features_size=1024)
+
+    model = MultiModelSpineCNN(sag_t1_args, sag_t2_args, axial_t2_args, last_fc_dim=1024, dropout=0.5,
+                               name="multi_model_test")
     model.fit(train_loader=train_dataloader, val_loader=train_dataloader, num_epochs=3,
-              lr=0.005, momentum=0.9, wd=0., try_cuda=True, verbose=True, print_stride=1)
-    model.fit(train_loader=train_dataloader, val_loader=train_dataloader, num_epochs=2,
-              lr=0.0001, momentum=0.9, wd=0., try_cuda=True, verbose=True, print_stride=1)
-    #model.fit(train_loader=train_dataloader, val_loader=train_dataloader, num_epochs=2,
-    #          lr=0.0001, momentum=0.9, wd=0.0001, try_cuda=True, verbose=True, print_stride=1)
+              lr=0.005, momentum=0.9, wd=0.0001, try_cuda=True, verbose=True, print_stride=1)
