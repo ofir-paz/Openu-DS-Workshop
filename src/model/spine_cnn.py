@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch import Tensor
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
-from torchvision.models.video import r3d_18, R3D_18_Weights
+from torchvision.models.video import r3d_18, R3D_18_Weights, s3d, S3D_Weights
 from torch.utils.data import DataLoader
 from src.model.base_model import BaseModel
 from typing import Callable, List, Tuple, Dict, Union, Optional, Literal
@@ -25,45 +25,75 @@ class LumbarSpineStenosisResNet(BaseModel):
     single_channel_mean: List[float] = [sum([0.43216, 0.394666, 0.37645]) / 3]
     single_channel_std: List[float] = [sum([0.22803, 0.22145, 0.216989]) / 3]
 
-    def __init__(self, pretrained: bool = False, progress: bool = True, **kwargs) -> None:
+    def __init__(
+        self,
+        architecture: Literal["R3D_18", "S3D"] = "S3D",
+        pretrained: bool = False,
+        progress: bool = True,
+        **kwargs
+    ) -> None:
         super().__init__(name=kwargs.get("name", ""))
+        assert isinstance(architecture, str), "architecture must be a string."
         _hidden_size = kwargs.get("hidden_size", 1024)
         _dropout_val = kwargs.get("dropout", kwargs.get("p", 0.5))
-        if pretrained:
-            # Load the pre-trained 3D ResNet model.
+        _max_grad_norm = kwargs.get("max_grad_norm", 1.0)
+        self.architecture = architecture
+        if architecture == "R3D_18":
+            # Load the pre-trained 3D ResNet18 model.
             # See: https://pytorch.org/vision/main/models/generated/torchvision.models.video.r3d_18.html
             # Under: #torchvision.saved_models.video.R3D_18_Weights
             self.pre_trained_transforms = R3D_18_Weights.KINETICS400_V1.transforms(
                 mean=self.single_channel_mean, std=self.single_channel_std
             )
-            self.resnet3d = r3d_18(weights=R3D_18_Weights.KINETICS400_V1, progress=progress)
-        else:
-            # TODO: Change the mean and std to the correct values.
-            self.pre_trained_transforms = R3D_18_Weights.KINETICS400_V1.transforms(
+            _weights = R3D_18_Weights.KINETICS400_V1 if pretrained else None
+            self.model = r3d_18(weights=_weights, progress=progress)
+
+            # Modify the first convolutional layer to accept 1 input channel instead of 3.
+            # We do that by taking the average of the 3 input channels (ensemble).
+            first_conv_layer: nn.Conv3d = self.model.stem._modules["0"]  # type: ignore
+            first_conv_layer.weight = nn.Parameter(first_conv_layer.weight.mean(dim=1, keepdim=True))
+            first_conv_layer.__dict__["in_channels"] = 1
+
+            # Modify the fully connected layer.
+            self.model.fc = nn.Sequential(
+                nn.Linear(self.model.fc.in_features, _hidden_size),
+                nn.ReLU(),
+                nn.Dropout(p=_dropout_val),
+                nn.Linear(_hidden_size, self.num_total_classes)
+            )
+
+        elif architecture == "S3D":
+            # Load the pre-trained S3D model.
+            # See: https://pytorch.org/vision/main/models/generated/torchvision.models.video.r3d_18.html
+            # Under: #torchvision.saved_models.video.S3D_Weights
+            self.pre_trained_transforms = S3D_Weights.KINETICS400_V1.transforms(
                 mean=self.single_channel_mean, std=self.single_channel_std
             )
-            # Create a new 3D ResNet model and ignore the progress bar.
-            self.resnet3d = r3d_18(weights=None, progress=False)
-        
-        # Modify the first convolutional layer to accept 1 input channel instead of 3.
-        # We do that by taking the average of the 3 input channels (ensemble).
-        first_conv_layer: nn.Conv3d = self.resnet3d.stem._modules["0"]  # type: ignore
-        first_conv_layer.weight = nn.Parameter(first_conv_layer.weight.mean(dim=1, keepdim=True))
-        
-        # Modify the fully connected layer.
-        self.resnet3d.fc = nn.Sequential(
-            nn.Linear(self.resnet3d.fc.in_features, _hidden_size),
-            nn.ReLU(),
-            nn.Dropout(p=_dropout_val),
-            nn.Linear(_hidden_size, self.num_total_classes)
-        )
+            _weights = S3D_Weights.KINETICS400_V1 if pretrained else None
+            self.model = s3d(weights=_weights, progress=progress)
+
+            # Modify the first convolutional layer to accept 1 input channel instead of 3.
+            # We do that by taking the average of the 3 input channels (ensemble).
+            first_conv_layer: nn.Conv3d = self.model.features[0][0][0]
+            first_conv_layer.weight = nn.Parameter(first_conv_layer.weight.mean(dim=1, keepdim=True))
+            first_conv_layer.__dict__["in_channels"] = 1
+
+            # Modify the fully connected layer.
+            self.model.classifier = nn.Sequential(
+                nn.Dropout(p=_dropout_val),
+                nn.Conv3d(1024, self.num_total_classes, kernel_size=1, stride=1, bias=True)
+            )
+
+        else:
+            raise NotImplementedError(f"architecture '{architecture}' is not supported.")
+
         self.log_softmax = nn.LogSoftmax(dim=2)
 
-        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=_max_grad_norm)
         self._add_forward_transforms()
     
     def forward(self, x: Tensor) -> Tensor:
-        x = self.resnet3d(x)
+        x = self.model(x)
         x = x.view(-1, self.num_levels * self.num_conditions, self.num_severities)
         x = self.log_softmax(x)  # Apply softmax over the severity classes
         return x
@@ -95,10 +125,18 @@ class SingleModelSpineCNN(LumbarSpineStenosisResNet):
         _out_features_size = kwargs.get("out_features_size", 512)
 
         # Reinitialize the fully connected layer.
-        self.resnet3d.fc = nn.Linear(self.resnet3d.fc[0].in_features, _out_features_size)
+        if self.architecture == "R3D_18":
+            self.model.fc = nn.Linear(self.model.fc[0].in_features, _out_features_size)
+        elif self.architecture == "S3D":
+            self.model.classifier = nn.Sequential(
+                nn.Dropout(p=_dropout_val),
+                nn.Conv3d(1024, _out_features_size, kernel_size=1, stride=1, bias=True)
+            )
+        else:
+            raise RuntimeError("Architecture must be either 'R3D_18' or 'S3D', this should be unreachable.")
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.resnet3d(x).view(-1)  # Batch size must be 1.
+        x = self.model(x).view(-1)  # Batch size must be 1.
         return x
 
 
