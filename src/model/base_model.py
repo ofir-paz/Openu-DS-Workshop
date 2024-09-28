@@ -41,7 +41,10 @@ class BaseModel(nn.Module):
             raise ValueError("Model name must be provided.")
         elif "=" in name:
             raise ValueError("Model name cannot contain the '=' character.")
-        self.make_model_dir(name, num_tries=5)
+        elif name == "do_not_save":
+            pass
+        else:
+            self.make_model_dir(name, num_tries=5)
         super().__init__()
         self.best_weights: Optional[dict[str, Tensor]] = None
         self.global_epoch: int = 0
