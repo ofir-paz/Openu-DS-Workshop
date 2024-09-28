@@ -123,6 +123,7 @@ class SingleModelSpineCNN(LumbarSpineStenosisResNet):
         super().__init__(*args, name="do_not_save", **kwargs)
         _dropout_val = kwargs.get("dropout", kwargs.get("p", 0.5))
         _out_features_size = kwargs.get("out_features_size", 512)
+        self.out_features_size = _out_features_size
 
         # Reinitialize the fully connected layer.
         if self.architecture == "R3D_18":
@@ -174,6 +175,11 @@ class MultiModelSpineCNN(BaseModel):
         out_features = [[], [], []]
         for i, (data, series_type) in enumerate(zip(data_dict["data"], data_dict["series_types"])):
             out_features[series_type].append(self.models[series_type](data))
+
+        # Handle case when there are no series of a certain type.
+        for i in range(len(self.models)):
+            if out_features[i] == []:
+                out_features[i] = [torch.zeros(1, self.models[i].out_features_size, device=self._device)]
 
         # Handle multiple same series types.
         out_features = [torch.stack(out).mean(dim=0) for out in out_features]
