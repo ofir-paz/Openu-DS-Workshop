@@ -19,11 +19,11 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=2)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=2)
 
-    sag_t1_args = dict(architecture="R3D_18", pretrained=True, progress=True, out_features_size=512)
-    sag_t2_args = dict(architecture="R3D_18", pretrained=True, progress=True, out_features_size=512)
-    axial_t2_args = dict(architecture="R3D_18", pretrained=True, progress=True, out_features_size=1024)
+    sag_t1_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
+    sag_t2_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
+    axial_t2_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=1024)
 
     model = MultiModelSpineCNN(sag_t1_args, sag_t2_args, axial_t2_args, last_fc_dim=1024, dropout=0.5,
-                               name="multi_model_v1")
+                               name="multi_model_v2")
     model.fit(train_loader=train_dataloader, val_loader=val_dataloader, num_epochs=30,
               lr=0.0025, momentum=0.9, wd=0.0005, try_cuda=True, verbose=True, print_stride=1)

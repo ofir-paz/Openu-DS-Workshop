@@ -4,7 +4,11 @@ import torch.nn.functional as F
 from torch import Tensor
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
-from torchvision.models.video import r3d_18, R3D_18_Weights, s3d, S3D_Weights
+from torchvision.models.video import (
+    r3d_18, R3D_18_Weights,
+    s3d, S3D_Weights,
+    mc3_18, MC3_18_Weights
+)
 from torch.utils.data import DataLoader
 from src.model.base_model import BaseModel
 from typing import Callable, List, Tuple, Dict, Union, Optional, Literal
@@ -27,7 +31,7 @@ class LumbarSpineStenosisResNet(BaseModel):
 
     def __init__(
         self,
-        architecture: Literal["R3D_18", "S3D"] = "S3D",
+        architecture: Literal["R3D_18", "S3D", "MC3_18"] = "MC3_18",
         pretrained: bool = False,
         progress: bool = True,
         **kwargs
@@ -63,6 +67,7 @@ class LumbarSpineStenosisResNet(BaseModel):
             )
 
         elif architecture == "S3D":
+            raise NotImplementedError("S3D architecture is not supported due to mismatched input size.")
             # Load the pre-trained S3D model.
             # See: https://pytorch.org/vision/main/models/generated/torchvision.models.video.r3d_18.html
             # Under: #torchvision.saved_models.video.S3D_Weights
@@ -82,6 +87,30 @@ class LumbarSpineStenosisResNet(BaseModel):
             self.model.classifier = nn.Sequential(
                 nn.Dropout(p=_dropout_val),
                 nn.Conv3d(1024, self.num_total_classes, kernel_size=1, stride=1, bias=True)
+            )
+        elif architecture == "MC3_18":
+            # Load the pre-trained MC3_18 model.
+            # See: https://pytorch.org/vision/main/models/generated/torchvision.models.video.r3d_18.html
+            # Under: #torchvision.saved_models.video.MC3_18_Weights
+            self.pre_trained_transforms = MC3_18_Weights.KINETICS400_V1.transforms(
+                mean=self.single_channel_mean, std=self.single_channel_std
+            )
+
+            _weights = MC3_18_Weights.KINETICS400_V1 if pretrained else None
+            self.model = mc3_18(weights=_weights, progress=progress)
+
+            # Modify the first convolutional layer to accept 1 input channel instead of 3.
+            # We do that by taking the average of the 3 input channels (ensemble).
+            first_conv_layer: nn.Conv3d = self.model.stem._modules["0"]  # type: ignore
+            first_conv_layer.weight = nn.Parameter(first_conv_layer.weight.mean(dim=1, keepdim=True))
+            first_conv_layer.__dict__["in_channels"] = 1
+
+            # Modify the fully connected layer.
+            self.model.fc = nn.Sequential(
+                nn.Linear(self.model.fc.in_features, _hidden_size),
+                nn.ReLU(),
+                nn.Dropout(p=_dropout_val),
+                nn.Linear(_hidden_size, self.num_total_classes)
             )
 
         else:
@@ -133,8 +162,10 @@ class SingleModelSpineCNN(LumbarSpineStenosisResNet):
                 nn.Dropout(p=_dropout_val),
                 nn.Conv3d(1024, _out_features_size, kernel_size=1, stride=1, bias=True)
             )
+        elif self.architecture == "MC3_18":
+            self.model.fc = nn.Linear(self.model.fc[0].in_features, _out_features_size)
         else:
-            raise RuntimeError("Architecture must be either 'R3D_18' or 'S3D', this should be unreachable.")
+            raise RuntimeError("Architecture must be either 'R3D_18' or 'S3D' or 'MC3_18', this should be unreachable.")
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.model(x).view(-1)  # Batch size must be 1.
