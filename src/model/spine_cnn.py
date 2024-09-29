@@ -179,9 +179,9 @@ class MultiModelSpineCNN(BaseModel):
         assert all(isinstance(model_dict, dict) for model_dict in model_dicts), \
             "All model arguments must be dictionaries for model initialization."
         self.models: List[SingleModelSpineCNN] = []
-        for model_dict in model_dicts:
-            setattr(self, model_dict["inst_name"], SingleModelSpineCNN(**model_dict))
-            self.models.append(getattr(self, model_dict["inst_name"]))
+        for i, model_dict in enumerate(model_dicts):
+            setattr(self, f"sub_model_{i}", SingleModelSpineCNN(**model_dict))
+            self.models.append(getattr(self, f"sub_model_{i}"))
         self.fc = nn.Sequential(
             nn.Linear(sum([model_dict["out_features_size"] for model_dict in model_dicts]), last_fc_dim),
             nn.ReLU(),
