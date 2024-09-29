@@ -19,9 +19,9 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=2)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=2)
 
-    sag_t1_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
-    sag_t2_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
-    axial_t2_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=1024)
+    sag_t1_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512, inst_name="sag_t1")
+    sag_t2_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512, inst_name="sag_t2")
+    axial_t2_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=1024, inst_name="axial_t2")
 
     model = MultiModelSpineCNN(sag_t1_args, sag_t2_args, axial_t2_args, last_fc_dim=1024, dropout=0.5,
                                name="multi_model_v2")
