@@ -174,16 +174,13 @@ class SingleModelSpineCNN(LumbarSpineStenosisResNet):
 
 class MultiModelSpineCNN(BaseModel):
     """Multi-Model Spine CNN model."""
-    def __init__(self, sag_T1_args: dict, sag_T2_args: dict, axial_T2_args: dict,
-                 last_fc_dim: int = 1024, dropout: float = 0.5, **kwargs) -> None:
+    def __init__(self, *model_dicts, last_fc_dim: int = 1024, dropout: float = 0.5, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.sag_T1_model = SingleModelSpineCNN(**sag_T1_args)
-        self.sag_T2_model = SingleModelSpineCNN(**sag_T2_args)
-        self.axial_T2_model = SingleModelSpineCNN(**axial_T2_args)
-        self.models = [self.sag_T1_model, self.sag_T2_model, self.axial_T2_model]
+        assert all(isinstance(model_dict, dict) for model_dict in model_dicts), \
+            "All model arguments must be dictionaries for model initialization."
+        self.models = [SingleModelSpineCNN(**model_dict) for model_dict in model_dicts]
         self.fc = nn.Sequential(
-            nn.Linear(sag_T1_args["out_features_size"] + sag_T2_args["out_features_size"]
-                      + axial_T2_args["out_features_size"], last_fc_dim),
+            nn.Linear(sum([model_dict["out_features_size"] for model_dict in model_dicts]), last_fc_dim),
             nn.ReLU(),
             nn.Dropout(p=dropout),
             nn.Linear(last_fc_dim, SingleModelSpineCNN.num_total_classes)
@@ -203,7 +200,7 @@ class MultiModelSpineCNN(BaseModel):
             "data and series_types must have the same length."
 
         # Assume series_type is encoded.
-        out_features = [[], [], []]
+        out_features = [[] for _ in range(len(self.models))]
         for i, (data, series_type) in enumerate(zip(data_dict["data"], data_dict["series_types"])):
             out_features[series_type].append(self.models[series_type](data))
 
