@@ -49,7 +49,7 @@ class BaseLumbarSpineDataset(Dataset):
     default_preprocess = transforms.Compose([
         # Accepts a numpy array of dimensions (D, H, W).
         torch.from_numpy,
-        transforms.ConvertImageDtype(torch.float32),
+        transforms.ConvertImageDtype(torch.float32),  # Loaded image is float64.
         # Add a channel dimension, (D, 1, H, W).
         add_channel_dim,
     ])

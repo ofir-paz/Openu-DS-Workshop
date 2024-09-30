@@ -20,14 +20,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s.%(levelna
 logger = logging.getLogger("model.spine_cnn")
 
 
+def normalize(x: Tensor, eps: float = 1e-8) -> Tensor:
+    return (x - x.mean()) / (x.std() + eps)
+
+
 class LumbarSpineStenosisResNet(BaseModel):
     """Lumbar Spine Stenosis ResNet model."""
     num_levels: int = 5
     num_conditions: int = 5
     num_severities: int = 3
     num_total_classes: int = num_levels * num_conditions * num_severities
-    single_channel_mean: List[float] = [sum([0.43216, 0.394666, 0.37645]) / 3]
-    single_channel_std: List[float] = [sum([0.22803, 0.22145, 0.216989]) / 3]
+    single_channel_mean: List[float] = [0]  # Turn off pre-trained normalization.
+    single_channel_std: List[float] = [1]  # Turn off pre-trained normalization.
+    normalizer: Callable[..., Tensor] = staticmethod(normalize)
 
     def __init__(
         self,
@@ -132,6 +137,7 @@ class LumbarSpineStenosisResNet(BaseModel):
             def decorator(forward: Callable[[Tensor], Tensor]) -> Callable:
                 def wrapper(x: Tensor) -> Tensor:
                     x = self.pre_trained_transforms(x)
+                    x = self.normalizer(x)
                     return forward(x)
                 return wrapper
             self.forward = decorator(self.forward)

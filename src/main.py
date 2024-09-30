@@ -45,19 +45,19 @@ def make_submission(*model_init_dicts, epoch: int, **model_init_kwargs) -> None:
 def main() -> None:
 
     dataset = MultiModelLumbarSpineDataset(train=True)
-    train_dataset, val_dataset = dataset.split(val_size=0.2)
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=2)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=2)
+    train_dataset, val_dataset = dataset.split(val_size=0.15)
+    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=0)
+    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0)
 
     # sag_t1_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
     sags_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
     axial_t2_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
     model = MultiModelSpineCNN(sags_args, axial_t2_args, last_fc_dim=1024, dropout=0.5,
-                               name="multi_model_v3")
-    make_submission(sags_args, axial_t2_args, epoch=1, last_fc_dim=1024, dropout=0.5,
-                    name="multi_model_v3")
-    #model.fit(train_loader=train_dataloader, val_loader=val_dataloader, num_epochs=15,
-    #          lr=0.001, momentum=0.9, wd=0.001, try_cuda=True, verbose=True, print_stride=1)
+                               name="multi_model_wnorm_v1")
+    #make_submission(sags_args, axial_t2_args, epoch=1, last_fc_dim=1024, dropout=0.5,
+    #                name="multi_model_v3")
+    model.fit(train_loader=train_dataloader, val_loader=val_dataloader, num_epochs=25,
+              lr=0.001, momentum=0.9, wd=0.001, try_cuda=True, verbose=True, print_stride=1)
 
 
 if __name__ == '__main__':
