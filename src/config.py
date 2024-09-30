@@ -25,11 +25,12 @@ TEST_IMAGES_PATH = DATA_PATH / "test_images"
 TRAIN_CSV_PATH = DATA_PATH / "train.csv"
 TEST_CSV_PATH = DATA_PATH / "test.csv"
 MODELS_PATH = PROJECT_PATH / "saved_models"
+SUBMISSION_PATH = PROJECT_PATH / "submissions"
 # ======================== End Of Configuration Paths ======================== #
 
 
 # =============================== Encoding Maps ============================== #
-SERIES_S2I = {"Sagittal T1": 0, "Sagittal T2/STIR": 1, "Axial T2": 2}
+SERIES_S2I = {"Sagittal T1": 0, "Sagittal T2/STIR": 0, "Axial T2": 1}
 # =========================== End Of Encoding Maps =========================== #
 
 

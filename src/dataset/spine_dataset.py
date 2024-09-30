@@ -138,6 +138,8 @@ class MultiModelLumbarSpineDataset(BaseLumbarSpineDataset):
                 [self.severity_s2i.get(condition_row[col], self.nan_class) for col in self.conditions_i2s],
                 dtype=torch.int64
             )
+        else:
+            data_dict["row_id"] = study_id
 
         return data_dict
 
