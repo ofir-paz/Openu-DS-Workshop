@@ -72,8 +72,6 @@ class BaseLumbarSpineDataset(Dataset):
         self.images_path: Path = TRAIN_IMAGES_PATH if train else TEST_IMAGES_PATH
         if train:
             self.train_csv = pd.read_csv(TRAIN_CSV_PATH, index_col="study_id")
-        else:
-            raise NotImplementedError("Test dataset is not implemented yet.")
 
     def split(self, val_size: float = 0.2) -> tuple["BaseLumbarSpineDataset", "BaseLumbarSpineDataset"]:
         return random_split(self, [1 - val_size, val_size])  # type: ignore
