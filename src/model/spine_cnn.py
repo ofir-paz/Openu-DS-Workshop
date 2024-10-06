@@ -21,6 +21,8 @@ logger = logging.getLogger("model.spine_cnn")
 
 
 def normalize(x: Tensor, eps: float = 1e-8) -> Tensor:
+    """Normalize the input tensor."""
+    x /= x.max()
     return (x - x.mean()) / (x.std() + eps)
 
 
