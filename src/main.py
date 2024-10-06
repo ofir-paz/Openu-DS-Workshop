@@ -16,6 +16,8 @@ def make_submission_with_loaded_multi_model(model: MultiModelSpineCNN, save_suff
     test_dataset = MultiModelLumbarSpineDataset(False)
     if not (dir_path := SUBMISSION_PATH / f"{model.name}_submissions").exists():
         dir_path.mkdir()
+
+    model.eval()
     with torch.no_grad():
         for idx in range(len(test_dataset)):
             test_dict = test_dataset[idx]
