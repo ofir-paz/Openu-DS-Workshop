@@ -304,7 +304,8 @@ class MultiModelSpineCNN(BaseModel):
     ) -> Tuple[Tensor, float]:
         self.optimizer.zero_grad()
         y_hat = self(data_dict)
-        loss = F.nll_loss(y_hat.view(-1, y_hat.size(-1)), data_dict["target"])
+        loss = F.nll_loss(y_hat.view(-1, y_hat.size(-1)), data_dict["target"],
+                          weight=torch.tensor([1/7, 2/7, 4/7], device=self._device))
         loss.backward()
         self.optimizer.step()
         return y_hat, loss.item()
@@ -327,7 +328,8 @@ class MultiModelSpineCNN(BaseModel):
 
                 y_hat: Tensor = self(data_dict)
                 loss: float = F.nll_loss(
-                    y_hat.view(-1, y_hat.size(-1)), data_dict["target"]
+                    y_hat.view(-1, y_hat.size(-1)), data_dict["target"],
+                    weight=torch.tensor([1 / 7, 2 / 7, 4 / 7], device=self._device)
                 ).item()
 
                 running_loss, total_corrects = self.calc_running_metrics(
