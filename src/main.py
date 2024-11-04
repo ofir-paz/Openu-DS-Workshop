@@ -44,18 +44,25 @@ def make_submission(*model_init_dicts, epoch: int, **model_init_kwargs) -> None:
     make_submission_with_loaded_multi_model(model, f"e={epoch}")
 
 
+def add_gaussian_noise(image: torch.Tensor) -> torch.Tensor:
+    var = image.max() * 0.05 + 1e-7  # TODO: Maybe add variance in each depth slice.
+    noise = torch.randn(image.size(), dtype=torch.float32) * torch.sqrt(var)
+    noisy_tensor = image + noise
+    return torch.clamp(noisy_tensor, image.min(), image.max())  # Ensure values are within the original range
+
+
 def main() -> None:
 
-    dataset = MultiModelLumbarSpineDataset(train=True)
+    dataset = MultiModelLumbarSpineDataset(train=True, augs=add_gaussian_noise)
     train_dataset, val_dataset = dataset.split(val_size=0.15)
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=4)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
+    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=3)
+    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=3)
 
     # sag_t1_args = dict(architecture="MC3_18", pretrained=True, progress=True, out_features_size=512)
     sags_args = dict(architecture="R3D_18", pretrained=False, progress=True, out_features_size=1024)
     axial_t2_args = dict(architecture="R3D_18", pretrained=False, progress=True, out_features_size=750)
     model = MultiModelSpineCNN(sags_args, axial_t2_args, last_fc_dim=1024 + 750, dropout=0.4,
-                               name="multi_model_v4")
+                               name="do_not_save")
     #make_submission(sags_args, axial_t2_args, epoch=1, last_fc_dim=1024, dropout=0.5,
     #                name="multi_model_v3")
     model.fit(train_loader=train_dataloader, val_loader=val_dataloader, num_epochs=25,
