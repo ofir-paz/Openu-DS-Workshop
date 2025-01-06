@@ -80,7 +80,8 @@ def make_3d_dicom_plot(
         volume: np.ndarray, 
         num_layers: Optional[int] = None,
         width: int = 800,
-        height: int = 600
+        height: int = 600,
+        plot_title = 'Slices in volumetric DICOM data'
     ) -> None:
     """
     Make an interactive 3D plot of a DICOM series.
@@ -90,6 +91,7 @@ def make_3d_dicom_plot(
         num_layers (Optional[int]): The number of layers in the volume.
         width (int): The width of the plot.
         height (int): The height of the plot.
+        plot_title (string): The plot title
     """
     if num_layers is None:
         num_layers = volume.shape[0]
@@ -134,7 +136,7 @@ def make_3d_dicom_plot(
 
     # Layout configuration
     fig.update_layout(
-            title='Slices in volumetric DICOM data',
+            title=plot_title,
             width=width,
             height=height,
             scene=dict(
@@ -193,7 +195,8 @@ def plot_dicom_series(
         interp_shape: Tuple[int, int, int] = (50, 180, 180),
         interpol_order: int = 5,
         width: int = 800,
-        height: int = 600
+        height: int = 600,
+        plot_title = 'Slices in volumetric DICOM data'
     ) -> None:
     """
     Plot a DICOM series from a directory.
@@ -204,9 +207,10 @@ def plot_dicom_series(
         interpol_order (int): The order of the spline interpolation.
         width (int): The width of the plot.
         height (int): The height of the plot.
+        plot_title (string): The plot title
     """
     volume = load_dicom_series(path)
     volume = prepare_volume_for_visualization(volume)
     interpolated_volume = interpolate_volume(volume, interp_shape, interpol_order)
-    make_3d_dicom_plot(interpolated_volume, volume.shape[0], width, height)
+    make_3d_dicom_plot(interpolated_volume, volume.shape[0], width, height, plot_title)
 # ========================== End Of Plots Functions ========================== #
