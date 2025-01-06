@@ -16,7 +16,7 @@ from pathlib import Path
 # ============================== End Of Imports ============================== #
 
 
-# ============================ Configuration Paths =========================== #
+# ============================== Constant Paths ============================== #
 PROJECT_PATH = Path(os.path.dirname(__file__)).parent
 SRC_PATH = PROJECT_PATH / "src"
 DATA_PATH = PROJECT_PATH / "data"
@@ -25,7 +25,12 @@ TEST_IMAGES_PATH = DATA_PATH / "test_images"
 TRAIN_SERIES_DESCRIPTIONS_CSV_PATH = DATA_PATH / "train_series_descriptions.csv"
 TRAIN_LABEL_COORDINATES_CSV_PATH = DATA_PATH / "train_label_coordinates.csv"
 TRAIN_CSV_PATH = DATA_PATH / "train.csv"
-TEST_CSV_PATH = DATA_PATH / "test.csv"
+TEST_SERIES_DESCRIPTIONS_CSV_PATH = DATA_PATH / "test_series_descriptions.csv"
+SAMPLE_SUBMISSION_CSV_PATH = DATA_PATH / "sample_submission.csv"
+# =========================== End Of Constant Paths ========================== #
+
+
+# ============================ Configuration Paths =========================== #
 MODELS_PATH = PROJECT_PATH / "saved_models"
 SUBMISSION_PATH = PROJECT_PATH / "submissions"
 # ======================== End Of Configuration Paths ======================== #
@@ -45,14 +50,14 @@ EXAMPLE_SAGITTAL_T2_STIR_ID: str = "702807833"
 THREEDIM_MRI_SHAPE = (30, 300, 300)
 
 SCS_ID: str = "4646740"
-SCS_Sagittal = TRAIN_IMAGES_PATH / SCS_ID / "3666319702/10.dcm"
-SCS_AXIAL = TRAIN_IMAGES_PATH / SCS_ID / "3201256954/15.dcm"
+SCS_Sagittal = TRAIN_IMAGES_PATH / SCS_ID / "3666319702" / "10.dcm"
+SCS_AXIAL = TRAIN_IMAGES_PATH / SCS_ID / "3201256954" / "15.dcm"
 
 NFA_ID: str = "7143189"
-NFA_Sagittal = TRAIN_IMAGES_PATH / NFA_ID / "3219733239/12.dcm"
+NFA_Sagittal = TRAIN_IMAGES_PATH / NFA_ID / "3219733239" / "12.dcm"
 
 SS_ID: str = "8785691"
-SS_AXIAL = TRAIN_IMAGES_PATH / SS_ID / "2406919186/3.dcm"
+SS_AXIAL = TRAIN_IMAGES_PATH / SS_ID / "2406919186" / "3.dcm"
 
 # ============================= End Of Constants ============================= #
 
