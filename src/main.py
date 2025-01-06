@@ -15,8 +15,8 @@ from src.dataset.augmentations import add_gaussian_noise
 def make_submission_with_loaded_multi_model(model: MultiModelSpineCNN, save_suffix: str) -> None:
     output_df = pd.DataFrame(columns=["row_id", "normal_mild", "moderate", "severe"])
     test_dataset = MultiModelLumbarSpineDataset(False)
-    if not (dir_path := SUBMISSION_PATH / f"{model.name}_submissions").exists():
-        dir_path.mkdir()
+    dir_path = SUBMISSION_PATH / f"{model.name}_submissions"
+    dir_path.mkdir(parents=True, exist_ok=True)
 
     model.eval()
     with torch.no_grad():
@@ -41,13 +41,13 @@ def make_submission_with_loaded_multi_model(model: MultiModelSpineCNN, save_suff
 def make_submission(*model_init_dicts, epoch: int, **model_init_kwargs) -> None:
     model = MultiModelSpineCNN(*model_init_dicts, **model_init_kwargs)
     model.load_state_dict(torch.load(model.model_dir / f"{model.name}_e={epoch}.pt"))
-    model.eval()
     make_submission_with_loaded_multi_model(model, f"e={epoch}")
 
 
 def main() -> None:
 
-    dataset = MultiModelLumbarSpineDataset(train=True, augs=add_gaussian_noise)
+    # Was better without augmentation.
+    dataset = MultiModelLumbarSpineDataset(train=True)#, augs=add_gaussian_noise)
     train_dataset, val_dataset = dataset.split(val_size=0.15)
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=3)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=3)
@@ -56,11 +56,10 @@ def main() -> None:
     sags_args = dict(architecture="R3D_18", pretrained=False, progress=True, out_features_size=1024)
     axial_t2_args = dict(architecture="R3D_18", pretrained=False, progress=True, out_features_size=750)
     model = MultiModelSpineCNN(sags_args, axial_t2_args, last_fc_dim=1024 + 750, dropout=0.4,
-                               name="do_not_save")
-    #make_submission(sags_args, axial_t2_args, epoch=1, last_fc_dim=1024, dropout=0.5,
-    #                name="multi_model_v3")
-    model.fit(train_loader=train_dataloader, val_loader=val_dataloader, num_epochs=25,
-              lr=0.001, momentum=0.9, wd=0.001, try_cuda=True, verbose=True, print_stride=1)
+                               name="multi_model_submission_version")
+    model.fit(train_loader=train_dataloader, val_loader=val_dataloader, num_epochs=15,
+              lr=0.001, wd=0.0005, try_cuda=True, verbose=True, print_stride=1)
+    make_submission_with_loaded_multi_model(model, "final")
 
 
 if __name__ == '__main__':

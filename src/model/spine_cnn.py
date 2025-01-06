@@ -231,7 +231,7 @@ class MultiModelSpineCNN(BaseModel):
         return y_hat.unsqueeze(0)  # Add a batch dimension.
 
     def fit(self, train_loader: DataLoader, val_loader: Optional[DataLoader] = None,
-            num_epochs: int = 30, lr: float = 0.001, momentum: float = 0.9, wd: float = 0.,
+            num_epochs: int = 30, lr: float = 0.001, wd: float = 0.,
             try_cuda: bool = True, verbose: bool = True, print_stride: int = 1) -> None:
         """Override function for training a multi-model spine 3D-CNN."""
         use_cuda = try_cuda and torch.cuda.is_available()
