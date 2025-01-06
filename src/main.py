@@ -9,6 +9,7 @@ import pandas as pd
 from src.model.base_model import BaseModel
 from src.model.spine_cnn import MultiModelSpineCNN
 from src.dataset.spine_dataset import SingleModelLumbarSpineDataset, MultiModelLumbarSpineDataset
+from src.dataset.augmentations import add_gaussian_noise
 
 
 def make_submission_with_loaded_multi_model(model: MultiModelSpineCNN, save_suffix: str) -> None:
@@ -42,13 +43,6 @@ def make_submission(*model_init_dicts, epoch: int, **model_init_kwargs) -> None:
     model.load_state_dict(torch.load(model.model_dir / f"{model.name}_e={epoch}.pt"))
     model.eval()
     make_submission_with_loaded_multi_model(model, f"e={epoch}")
-
-
-def add_gaussian_noise(image: torch.Tensor) -> torch.Tensor:
-    var = image.max() * 0.05 + 1e-7  # TODO: Maybe add variance in each depth slice.
-    noise = torch.randn(image.size(), dtype=torch.float32) * torch.sqrt(var)
-    noisy_tensor = image + noise
-    return torch.clamp(noisy_tensor, image.min(), image.max())  # Ensure values are within the original range
 
 
 def main() -> None:
