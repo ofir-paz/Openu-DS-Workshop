@@ -47,7 +47,7 @@ EXAMPLE_STIR_ID: str = "702807833"
 EXAMPLE_SAGITTAL_T1_ID: str = "1054713880"
 EXAMPLE_AXIAL_T2_ID: str = "2448190387"
 EXAMPLE_SAGITTAL_T2_STIR_ID: str = "702807833"
-THREEDIM_MRI_SHAPE = (30, 300, 300)
+THREEDIM_MRI_SHAPE = (15, 100, 100)
 
 SCS_ID: str = "4646740"
 SCS_Sagittal = TRAIN_IMAGES_PATH / SCS_ID / "3666319702" / "10.dcm"
@@ -59,6 +59,8 @@ NFA_Sagittal = TRAIN_IMAGES_PATH / NFA_ID / "3219733239" / "12.dcm"
 SS_ID: str = "8785691"
 SS_AXIAL = TRAIN_IMAGES_PATH / SS_ID / "2406919186" / "3.dcm"
 
+TEST_PATIENT_ID: str = "44036939"
+TEST_PATIENT_SAGITTAL_T2: str = "3844393089" 
 # ============================= End Of Constants ============================= #
 
 # Set the root directory of the project.
