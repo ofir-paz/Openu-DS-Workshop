@@ -74,8 +74,10 @@ class BaseLumbarSpineDataset(Dataset):
             self.train_csv = pd.read_csv(TRAIN_CSV_PATH, index_col="study_id")
 
     def split(self, val_size: float = 0.2) -> tuple["BaseLumbarSpineDataset", "BaseLumbarSpineDataset"]:
-        return random_split(self, [1 - val_size, val_size])  # type: ignore
-
+        train, val = random_split(self, [1 - val_size, val_size])  # type: ignore
+        val._apply_augs = False
+        val.augs = None
+        return train, val
 
 class SingleModelLumbarSpineDataset(BaseLumbarSpineDataset):
 

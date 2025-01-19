@@ -10,7 +10,7 @@ def ComposeSingle(func) -> transforms.Compose:
 
 @ComposeSingle
 def add_gaussian_noise(image: torch.Tensor) -> torch.Tensor:
-    var = image.max() * 0.05 + 1e-7  # TODO: Maybe add variance in each depth slice.
-    noise = torch.randn(image.size(), dtype=torch.float32) * torch.sqrt(var)
+    std = torch.min(torch.std(image, dim=(1, 2, 3)) * 0.05, torch.tensor(50))
+    noise = torch.randn(image.size(), dtype=torch.float32) * std.view(-1, 1, 1, 1)
     noisy_tensor = image + noise
     return torch.clamp(noisy_tensor, image.min(), image.max())  # Ensure values are within the original range
