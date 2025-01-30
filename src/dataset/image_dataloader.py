@@ -1,56 +1,65 @@
 import os
-import pydicom
-import numpy as np
 import pandas as pd
-from collections import defaultdict
+import numpy as np
+import pydicom
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
-class DICOMDataset:
-    def __init__(self, base_dir, csv_path):
-        self.base_dir = base_dir
-        self.csv_data = pd.read_csv(csv_path, engine='python')  # Load CSV file
-        self.series_mapping = self._create_series_mapping()
-        self.data_list = self._gather_dicom_files()
-    
-    def _create_series_mapping(self):
-        """Creates a mapping from series_id to condition from the CSV file."""
-        mapping = {}
-        for _, row in self.csv_data.iterrows():
-            series_id = str(row['series_id'])
-            condition = row['condition']
-            mapping[series_id] = condition
-        return mapping
-    
-    def _gather_dicom_files(self):
-        """Recursively finds DICOM files matching the series_id in the CSV file."""
-        data_list = []
-        for root, _, files in os.walk(self.base_dir):
-            for file in files:
-                if file.endswith(".dcm"):
-                    series_id = file.split(".")[0]  # Extract series_id from filename
-                    if series_id in self.series_mapping:
-                        condition = self.series_mapping[series_id]
-                        dicom_path = os.path.join(root, file)
-                        data_list.append((condition, dicom_path))
-        return data_list
-    
-    def __len__(self):
-        return len(self.data_list)
-    
-    def __getitem__(self, index):
-        condition, dicom_file = self.data_list[index]
-        if not os.path.exists(dicom_file):
-            return condition, None  # Skip missing files
-        dicom_data = pydicom.dcmread(dicom_file)
-        pixel_array = dicom_data.pixel_array.astype(np.float32)
-        return condition, pixel_array
+def load_batches(base_path, excel_file_path, k, process_batches_func, num_workers=4):
+    # Load the CSV data
+    df = pd.read_csv(excel_file_path, dtype={'series_id': str})  # Ensure series_id is treated as string
 
-def get_dataloader(base_dir, csv_path, batch_size=4):
-    dataset = DICOMDataset(base_dir, csv_path)
+    # Function to load images for each study_id folder (batch)
+    def load_images_from_study(study_path, df):
+        batch_data = {}
+        for series_id in os.listdir(study_path):
+            series_path = os.path.join(study_path, series_id)
+            if os.path.isdir(series_path):
+                series_id_str = str(series_id)  # Ensure consistent format
+                series_df = df[df['series_id'] == series_id_str]
+                if series_df.empty:
+                    continue  # Skip this folder
+                
+                condition = series_df.iloc[0]['condition']  # Copy condition from matching series_id
+                images = []
+                for file in os.listdir(series_path):
+                    if file.endswith(".dcm"):  # Ensure we're working with DICOM files
+                        dicom_path = os.path.join(series_path, file)
+                        try:
+                            dicom_data = pydicom.dcmread(dicom_path)
+                            img_data = dicom_data.pixel_array  # Convert DICOM pixel data to NumPy array
+                            images.append(img_data)
+                        except Exception as e:
+                            print(f"Error reading {dicom_path}: {e}")
+                
+                if len(images) > 0:
+                    if condition not in batch_data:
+                        batch_data[condition] = []
+                    batch_data[condition].append(np.array(images))
+        return batch_data
+
+    # Load all study_id folders
+    study_folders = [os.path.join(base_path, d) for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
     
-    for start_idx in range(0, len(dataset), batch_size):
-        batch = [dataset[i] for i in range(start_idx, min(start_idx + batch_size, len(dataset)))]
-        batch = [(condition, img) for condition, img in batch if img is not None]  # Remove missing images
-        if batch:
-            yield batch
+    batch_start_idx = 0
+    all_batches_data = []
+
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        while batch_start_idx < len(study_folders):
+            batch_end_idx = min(batch_start_idx + k, len(study_folders))
+            selected_study_folders = study_folders[batch_start_idx:batch_end_idx]
+            
+            futures = {executor.submit(load_images_from_study, study_folder, df): study_folder for study_folder in selected_study_folders}
+            
+            # Track progress with tqdm
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Loading batches"):
+                batch_data = future.result()
+                if batch_data:  # Only store non-empty batches
+                    all_batches_data.append(batch_data)
+
+            # After loading all batches, process them
+            process_batches_func(all_batches_data)
+
+            # Prepare for the next batch
+            batch_start_idx = batch_end_idx
+            all_batches_data = []  # Clear batch data for the next set of batches
