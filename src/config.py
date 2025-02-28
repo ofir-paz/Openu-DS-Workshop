@@ -38,6 +38,7 @@ SUBMISSION_PATH = PROJECT_PATH / "submissions"
 
 # =============================== Encoding Maps ============================== #
 SERIES_S2I = {"Sagittal T1": 0, "Sagittal T2/STIR": 0, "Axial T2": 1}
+SERIES_I2S = {0: "Sagittal", 1: "Axial"}
 # =========================== End Of Encoding Maps =========================== #
 
 
@@ -61,6 +62,9 @@ SS_AXIAL = TRAIN_IMAGES_PATH / SS_ID / "2406919186" / "3.dcm"
 
 TEST_PATIENT_ID: str = "44036939"
 TEST_PATIENT_SAGITTAL_T2: str = "3844393089" 
+BEST_MODEL_PATH = MODELS_PATH / "multi_model_submission_e=8.pt"
+BEST_SUBMISSION_PATH = SUBMISSION_PATH / "submission.csv"
+LOGITS_OUTPUT_PATH = BEST_MODEL_PATH.with_suffix(".pt_logits.pkl")
 # ============================= End Of Constants ============================= #
 
 # Set the root directory of the project.

@@ -162,6 +162,8 @@ cython_debug/
 .idea/
 
 .vscode/
-saved_models/
+saved_models/*
+!saved_models/*logits*
 data/
-submissions/
+submissions/*
+!submissions/submission.csv
